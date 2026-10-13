@@ -65,6 +65,8 @@ function Invoke-BoiBloatware {
             if (-not $p) { continue }
 
             $pkgFull = $p.PackageFullName
+            Add-BoiJournalEntry -Kind 'appx' -Action 'remove' -Path $pkgFull `
+                -Detail $p.Name -Extra @{ version = [string]$p.Version } | Out-Null
             Invoke-BoiAction -Description "remove AppX: $($p.Name) ($($p.Version))" -Action ([scriptblock]::Create(
                 "Remove-AppxPackage -Package '$pkgFull' -AllUsers -ErrorAction Continue; Remove-AppxProvisionedPackage -Online -PackageName '$pkgFull' -ErrorAction SilentlyContinue"
             ))

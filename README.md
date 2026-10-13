@@ -63,6 +63,32 @@ setup.ps1 -Config ..\other.json  # alternate profile (work pc / gaming rig)
 setup.ps1 -Reboot                # reboot at the end so pins apply
 ```
 
+## Undo / rollback
+
+Every mutation is journalled to `%LOCALAPPDATA%\SetupBoi\journal.json`
+(append-as-you-go, so it survives a crash mid-run):
+
+```powershell
+.\undo.ps1            # roll back the LAST run
+.\undo.ps1 -List      # show run history
+.\undo.ps1 -Run 20261013-145833   # a specific run
+.\undo.ps1 -All       # everything, newest run first
+.\undo.ps1 -DryRun    # just show what would happen
+```
+
+What undo does:
+
+- **registry values** → restored to their exact previous value; values that
+  didn't exist before are *deleted* again
+- **deleted files/folders** → re-copied from the per-run backup in
+  `%LOCALAPPDATA%\SetupBoi\backup\<run-id>\` (auto-backup runs before every
+  delete; trees > 300 MB skip the backup and say so)
+- **files it created** → deleted
+- **removed AppX packages** → listed with the reinstall hint (Store / winget);
+  not auto-reinstalled on purpose
+- **winget installs** → never uninstalled by undo; remove with
+  `winget uninstall <id>` yourself
+
 ## Notes & gotchas
 
 - **Start / taskbar pins** are applied through Windows' *policy* mechanism
@@ -84,10 +110,11 @@ setup.ps1 -Reboot                # reboot at the end so pins apply
 
 ```
 setup.ps1                  orchestrator (start here)
+undo.ps1                   roll back any past run (uses the journal)
 setupboi.ps1               one-file bootstrapper for bare PCs
 run.cmd                    double-click launcher
 config.example.jsonc       annotated example config
-scripts/SetupBoi.psm1      shared helpers (registry, winget, wallpaper, pins)
+scripts/SetupBoi.psm1      shared helpers (registry, winget, wallpaper, pins, journal)
 scripts/features/*.ps1     one file per section, each exposing Invoke-Boi<Thing>
 wallpaper/wallpaper.jpg    placeholder wallpaper (replace with your own)
 ```

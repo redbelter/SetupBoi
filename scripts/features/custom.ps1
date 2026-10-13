@@ -41,6 +41,17 @@ function Invoke-BoiCustom {
             if (-not [System.IO.Path]::IsPathRooted($dest)) {
                 $dest = Join-Path $env:LOCALAPPDATA $dest
             }
+            # journal: record prior state before we overwrite/create
+            if (-not (Get-BoiDryRun)) {
+                if (Test-Path -LiteralPath $dest) {
+                    $bak = BackUp-BoiFile -FilePath $dest
+                    Add-BoiJournalEntry -Kind 'file' -Action 'backup' -Path $dest `
+                        -Detail 'overwritten by custom.files' -Extra @{ backup = $bak } | Out-Null
+                } else {
+                    Add-BoiJournalEntry -Kind 'file' -Action 'create' -Path $dest `
+                        -Detail 'written by custom.files' | Out-Null
+                }
+            }
             if ($f.url) {
                 $got = Save-BoiUrl -Url $f.url -OutFile $dest
                 if (-not $got) { Add-BoiResult "custom file $($f.url)" 'FAIL'; continue }

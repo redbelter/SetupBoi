@@ -5,6 +5,122 @@ $script:DRYRUN = $false
 $script:Results = @()
 $script:BoiRepoRoot = Split-Path $PSScriptRoot -Parent
 
+# ---------------------------------------------------------------- journal
+# Every mutation appends an entry to %LOCALAPPDATA%\SetupBoi\journal.json so
+# undo.ps1 can roll the last run back. Entries are replayed newest-first.
+$script:JournalPath   = Join-Path $env:LOCALAPPDATA 'SetupBoi\journal.json'
+$script:JournalRun    = $null   # timestamp id of the current run
+$script:Journal       = @()     # in-memory copy while running
+
+function Start-BoiJournal {
+    param([string]$ConfigPath = '')
+    $script:JournalRun = (Get-Date).ToString('yyyyMMdd-HHmmss')
+    if (Test-Path $script:JournalPath) {
+        try { $script:Journal = @(Get-Content $script:JournalPath -Raw | ConvertFrom-Json) }
+        catch { $script:Journal = @(); Write-Boi 'journal unreadable, starting fresh' 'WARN' }
+    }
+    Add-BoiJournalEntry -Kind 'run' -Action 'begin' -Detail "run $script:JournalRun" `
+        -Extra @{ config = $ConfigPath } | Out-Null
+}
+
+function Stop-BoiJournal {
+    Add-BoiJournalEntry -Kind 'run' -Action 'end' | Out-Null
+    Save-BoiJournal
+}
+
+function Save-BoiJournal {
+    if ($script:DRYRUN) { return }
+    New-Item -ItemType Directory -Force -Path (Split-Path $script:JournalPath) | Out-Null
+    $json = if (@($script:Journal).Count -eq 0) { '[]' } else { ConvertTo-Json @($script:Journal) -Depth 6 -Compress }
+    [System.IO.File]::WriteAllText($script:JournalPath, $json, (New-Object System.Text.UTF8Encoding($false)))
+}
+
+function Add-BoiJournalEntry {
+    <# Appends one undo-record. Kind: reg|file|tree|lnk|run. Returns the entry. #>
+    param(
+        [Parameter(Mandatory)][string]$Kind,
+        [Parameter(Mandatory)][string]$Action,   # set|remove|delete|backup
+        [string]$Path = '',
+        [string]$Name = '',
+        $OldValue = $null,
+        [bool]$OldExists = $false,
+        [string]$Type = '',
+        [string]$Detail = '',
+        [hashtable]$Extra = @{}
+    )
+    if ($script:DRYRUN) { return $null }
+    if ($script:JournalQuiet) { return $null }
+    $e = [ordered]@{
+        at = (Get-Date).ToString('o'); run = $script:JournalRun
+        kind = $Kind; action = $Action; path = $Path; name = $Name
+        oldValue = $OldValue; oldExists = $OldExists; type = $Type; detail = $Detail
+    }
+    foreach ($k in $Extra.Keys) { $e[$k] = $Extra[$k] }
+    $script:Journal += [pscustomobject]$e
+    # append-only on disk right away: survives a crash mid-run
+    Save-BoiJournal
+    return [pscustomobject]$e
+}
+
+function Get-BoiJournal {
+    if (Test-Path $script:JournalPath) {
+        try { return @(Get-Content $script:JournalPath -Raw | ConvertFrom-Json) } catch { return @() }
+    }
+    return @()
+}
+
+function Get-BoiBackupDir {
+    $d = Join-Path (Split-Path $script:JournalPath) ('backup\' + $script:JournalRun)
+    if (-not $script:DRYRUN) { New-Item -ItemType Directory -Force -Path $d | Out-Null }
+    return $d
+}
+
+function Get-BoiLastRunId {
+    $seen = New-Object System.Collections.Generic.List[string]
+    foreach ($e in (Get-BoiJournal)) {
+        $r = [string]$e.run
+        if ($r -and -not $seen.Contains($r)) { $seen.Add($r) }
+    }
+    if ($seen.Count -eq 0) { return $null }
+    return $seen[$seen.Count - 1]
+}
+
+$script:BackupMaxMB = 300   # don't journal-backup trees bigger than this
+
+function BackUp-BoiTree {
+    <# Copies a tree into the per-run backup dir. Returns backup path or $null. #>
+    param([Parameter(Mandatory)][string]$Path, [string]$Label = '')
+    if ($script:DRYRUN) { return $null }
+    try {
+        $bytes = (Get-ChildItem $Path -Recurse -File -Force -ErrorAction SilentlyContinue |
+                  Measure-Object Length -Sum).Sum
+        if ($bytes -gt ($script:BackupMaxMB * 1MB)) {
+            Write-Boi "$Label too big ($([int]($bytes/1MB)) MB) to back up - deleting without backup" 'WARN'
+            return $null
+        }
+    } catch { return $null }
+    $safe = ($Path -replace '[\\/:*?\"<>|]', '_').Trim('_')
+    $dst  = Join-Path (Get-BoiBackupDir) $safe
+    & robocopy $Path $dst /E /NFL /NDL /NJH /NJS /NP | Out-Null
+    if ($LASTEXITCODE -ge 8) {
+        Write-Boi "backup failed for $Path (robocopy $LASTEXITCODE) - deleting without backup" 'WARN'
+        return $null
+    }
+    return $dst
+}
+
+function BackUp-BoiFile {
+    param([Parameter(Mandatory)][string]$FilePath)
+    if ($script:DRYRUN) { return $null }
+    try {
+        if ((Get-Item -LiteralPath $FilePath).Length -gt ($script:BackupMaxMB * 1MB)) { return $null }
+        $safe = ($FilePath -replace '[\\/:*?\"<>|]', '_')
+        $dst  = Join-Path (Get-BoiBackupDir) $safe
+        Copy-Item -LiteralPath $FilePath -Destination $dst -Force
+        return $dst
+    } catch { return $null }
+}
+
 function Set-BoiDryRun {
     param([bool]$Value)
     $script:DRYRUN = $Value
@@ -66,6 +182,18 @@ function Set-RegValue {
         return
     }
     try {
+        # journal: remember what was there before
+        $old = $null; $exists = $false
+        if (Test-Path $Path) {
+            $pi = Get-Item $Path
+            if ($pi.Property -and $pi.Property -contains $Name) {
+                $old = (Get-ItemProperty -Path $Path -Name $Name).PSObject.Properties[$Name].Value
+                $exists = $true
+            }
+        }
+        Add-BoiJournalEntry -Kind 'reg' -Action 'set' -Path $Path -Name $Name `
+            -OldValue $old -OldExists $exists -Type $Type | Out-Null
+
         if (-not (Test-Path $Path)) {
             New-Item -Path $Path -Force | Out-Null
         }
@@ -89,6 +217,9 @@ function Remove-RegValue {
         if (Test-Path $Path) {
             $p = Get-ItemProperty -Path $Path -Name $Name -ErrorAction SilentlyContinue
             if ($null -ne $p) {
+                $old = $p.PSObject.Properties[$Name].Value
+                Add-BoiJournalEntry -Kind 'reg' -Action 'remove' -Path $Path -Name $Name `
+                    -OldValue $old -OldExists $true -Type 'String' | Out-Null
                 Remove-ItemProperty -Path $Path -Name $Name -Force -ErrorAction Stop
                 Write-Boi "removed $Path\$Name" 'OK'
             }
@@ -122,8 +253,11 @@ function Remove-BoiTree {
     $what = if ($Label) { $Label } else { $Path }
     $body = {
         if (Test-Path -LiteralPath $Path) {
+            $bak = BackUp-BoiTree -Path $Path -Label $what
             try {
                 Remove-Item -LiteralPath $Path -Recurse -Force -ErrorAction Stop
+                Add-BoiJournalEntry -Kind 'tree' -Action 'delete' -Path $Path `
+                    -Detail $what -Extra @{ backup = $bak } | Out-Null
                 Write-Boi "removed: $Path" 'OK'
             } catch {
                 Write-Boi "could not remove $Path : $($_.Exception.Message)" 'WARN'
@@ -133,6 +267,21 @@ function Remove-BoiTree {
         }
     }
     Invoke-BoiAction -Description "remove $what" -Action $body
+}
+
+function Remove-BoiFile {
+    <# Deletes one file with backup + journal entry. #>
+    param([Parameter(Mandatory)][string]$FilePath, [string]$Label = '')
+    if ($script:DRYRUN) { return }
+    if (-not (Test-Path -LiteralPath $FilePath)) { return }
+    $bak = BackUp-BoiFile -FilePath $FilePath
+    try {
+        Remove-Item -LiteralPath $FilePath -Force -ErrorAction Stop
+        Add-BoiJournalEntry -Kind 'file' -Action 'delete' -Path $FilePath `
+            -Detail $Label -Extra @{ backup = $bak } | Out-Null
+    } catch {
+        Write-Boi "could not remove $FilePath : $($_.Exception.Message)" 'WARN'
+    }
 }
 
 # ---------------------------------------------------------------- misc
@@ -256,6 +405,8 @@ function Set-BoiWallpaper {
             Set-RegValue 'HKCU:\Control Panel\Desktop\Slideshow' 'Location0Attributes' '4294967295:127' -Type String
             Set-RegValue 'HKCU:\Control Panel\Desktop\Slideshow' 'Location0Interval' '0' -Type String
             Set-RegValue 'HKCU:\Control Panel\Desktop\Slideshow' 'CurrentUnit' '0' -Type String
+            Add-BoiJournalEntry -Kind 'tree' -Action 'create' -Path $destDir `
+                -Detail 'win11 protected-path wallpaper dir' | Out-Null
             $ImagePath = $dest
             Set-RegValue 'HKCU:\Control Panel\Desktop' 'Wallpaper' $ImagePath -Type String
         } catch {

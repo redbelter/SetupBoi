@@ -54,8 +54,8 @@ function Invoke-BoiDesktopIcons {
         Write-Boi 'removing desktop shortcuts (.lnk)' 'STEP'
         Invoke-BoiAction -Description 'delete *.lnk on Desktop' -Action {
             Get-ChildItem ([Environment]::GetFolderPath('Desktop')) -Filter '*.lnk' -Force -ErrorAction SilentlyContinue |
-                Remove-Item -Force -ErrorAction SilentlyContinue
-            Write-Boi 'removed .lnk files from Desktop' 'OK'
+                ForEach-Object { Remove-BoiFile -FilePath $_.FullName -Label 'desktop shortcut' }
+            Write-Boi 'removed .lnk files from Desktop (backed up)' 'OK'
         }
     }
 

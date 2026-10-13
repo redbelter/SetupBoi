@@ -78,6 +78,7 @@ $Skip = @($Skip | ForEach-Object { $_ -split ',' } | Where-Object { $_ })
 # ---- module + features ----------------------------------------------------
 Import-Module "$RepoRoot\scripts\SetupBoi.psm1" -Force
 Set-BoiDryRun ([bool]$DryRun)
+if (-not $DryRun) { Start-BoiJournal -ConfigPath $Config }
 
 Get-ChildItem "$RepoRoot\scripts\features\*.ps1" | ForEach-Object {
     . $_.FullName
@@ -147,6 +148,8 @@ foreach ($step in $pipeline.Keys) {
     Write-Host ''
 }
 $sw.Stop()
+
+if (-not $DryRun) { Stop-BoiJournal }
 
 # ---- summary --------------------------------------------------------------
 Write-Host '=== SUMMARY ==========================================' -ForegroundColor Cyan
