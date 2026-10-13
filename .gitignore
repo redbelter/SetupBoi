@@ -1,0 +1,8 @@
+# your personal config stays local; config.example.jsonc is the template
+config.json
+
+# local-only wallpapers if you want to keep them private (uncomment):
+# wallpaper/*.jpg
+# wallpaper/*.png
+
+*.log

@@ -1,0 +1,139 @@
+{
+  // SetupBoi config.  Copy to config.json and edit.
+  // All // comments are stripped at load time; sections are all optional.
+
+  "wallpaper": {
+    "enabled": true,
+    // local path (relative to this repo or absolute, %VARS% ok) or an http(s) url
+    "source": "wallpaper/wallpaper.jpg",
+    // fill | fit | stretch | center | tile | span
+    "style": "fill"
+  },
+
+  "colors": {
+    "enabled": true,
+    "mode": "dark",          // app windows: dark | light
+    "systemMode": "dark",    // taskbar + start: dark | light
+    "accent": "#4CC2FF",     // accent hex (null/omit to leave Windows default)
+    "colorPrevalence": true  // paint titlebars + window borders with the accent
+  },
+
+  "desktopIcons": {
+    "enabled": true,
+    "clean": false,          // true = hide ALL desktop icons, ignore the flags below
+    "showThisPC": true,
+    "showNetwork": false,
+    "showRecycleBin": true,
+    "showControlPanel": false,
+    "showUserFiles": false,
+    "cleanShortcuts": true   // delete .lnk files sitting on the Desktop folder
+  },
+
+  "taskbar": {
+    "enabled": true,
+    "align": "center",       // center | left
+    "autohide": false,
+    "combineTaskbar": 1,     // 0 always-combine | 1 when-full | 2 never
+    "hideWidgets": true,
+    "hideChat": true,
+    // friendly names (matched against Start Menu shortcuts) or full .lnk paths
+    "pins": [
+      "Firefox",
+      "Everything",
+      "Terminal"
+    ]
+  },
+
+  "start": {
+    "enabled": true,
+    // names, or raw AUMIDs ("MSEdge", "Microsoft.Windows.Explorer").
+    // "Settings", "File Explorer", "Admin Tools" have built-in aliases.
+    // Applies on next sign-in.
+    "pins": [
+      "File Explorer",
+      "Settings",
+      "Firefox",
+      "Terminal"
+    ]
+  },
+
+  "experience": {
+    "enabled": true,
+    "noMsAccountNag": true,
+    "noStartRecs": true,
+    "noWebSearch": true,        // no bing results in start search
+    "noLockScreenAds": true,
+    "noWidgets": true,
+    "noTips": true,
+    "noCopilot": true,
+    "noAADJoin": true,          // no work/school account nagging
+    "showFileExtensions": true,
+    "showHiddenFiles": true,
+    "noGameBarAds": true,
+    "noFeedback": true,
+    "classicContextMenu": false // true = win10-style right-click menu
+  },
+
+  "bloatware": {
+    "enabled": true,
+    "disableAutoInstall": true, // stop Store silently installing "suggested" apps
+    // wildcard-friendly package names (list yours: Get-AppxPackage -AllUsers | select Name)
+    "remove": [
+      "Microsoft.MicrosoftOfficeHub",
+      "MicrosoftTeams",
+      "Microsoft.GetHelp",
+      "Microsoft.Getstarted",
+      "Microsoft.MixedReality.Portal",
+      "Microsoft.549981C3F5F10",      // Cortana
+      "Microsoft.BingNews",
+      "Microsoft.BingWeather",
+      "Microsoft.MicrosoftSolitaireCollection",
+      "SpotifyAB.SpotifyMusic",
+      "Disney.*",
+      "*Netflix*",
+      "Microsoft.OneConnect",
+      "Microsoft.People",
+      "Microsoft.Wallet",
+      "Microsoft.YourPhone",
+      "Microsoft.WindowsMaps",
+      "Microsoft.ZuneMusic",
+      "Microsoft.ZuneVideo",
+      "Microsoft.WindowsFeedbackHub",
+      "MicrosoftCorporationII.WindowsSubsystemForWindows" // WSL - keep this one if you dev with it
+    ]
+  },
+
+  "onedrive": {
+    "enabled": true
+  },
+
+  "install": {
+    "enabled": true,
+    // winget package IDs:  winget search <name>
+    "winget": [
+      "Mozilla.Firefox",
+      "voidtools.Everything",
+      "7zip.7zip",
+      "Microsoft.WindowsTerminal",
+      "VideoLAN.VLC",
+      "Notepad++.Notepad++"
+    ],
+    // extra installers bundled in this repo (paths relative to repo root)
+    "local": []
+  },
+
+  "custom": {
+    // raw registry writes:
+    "registry": [
+      // { "path": "HKCU:\\Software\\Policies\\Microsoft\\Windows\\Explorer", "name": "HideSCAMeetNow", "value": 1, "type": "DWord" }
+    ],
+    // arbitrary commands, run in a cmd context:
+    "commands": [
+      // "powercfg /change standby-timeout-ac 0"
+    ],
+    // download (url) or write (content) files; run:true executes the file
+    "files": [],
+    // printed at the very end as a human todo list
+    "after": []
+  }
+}
