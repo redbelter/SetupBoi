@@ -1,0 +1,9 @@
+# batch files must keep CRLF or cmd.exe can misbehave
+*.cmd text eol=crlf
+# powershell works either way; keep LF in the repo
+*.ps1 text eol=lf
+*.psm1 text eol=lf
+*.json text eol=lf
+*.jsonc text eol=lf
+*.md text eol=lf
+*.jpg binary
